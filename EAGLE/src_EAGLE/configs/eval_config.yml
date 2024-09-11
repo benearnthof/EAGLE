@@ -1,6 +1,8 @@
-output_root: '../'
-pytorch_data_dir: 'pytorch_data_dir'
-experiment_name: "cocostuff27"
+output_root: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE'
+pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data' 
+save_pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data'
+
+experiment_name: "cityscapes"
 res: 320
 batch_size: 8
 num_workers: 8
@@ -13,13 +15,13 @@ use_ddp: False
 dino_patch_size: 8
 dino_feat_type: "feat"
 projection_type: "nonlinear"
-model_type: "vit_small"
+model_type: "vit_base"
 pretrained_weights: ~
-dataset_name: "cocostuff27"
+dataset_name: "cityscapes"
 
 model_paths:
- - '../checkpoints/EAGLE_COCO_ViTS8.ckpt'
-#  - '../checkpoints/EAGLE_Cityscapes_ViTB8.ckpt'
+# - '../checkpoints/EAGLE_COCO_ViTS8.ckpt'
+  - '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/EAGLE_Cityscapes_ViTB8.ckpt'
 
 hydra:
   run:

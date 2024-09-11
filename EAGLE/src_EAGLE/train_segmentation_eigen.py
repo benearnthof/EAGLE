@@ -1,6 +1,6 @@
-from utils import *
-from modules import *
-from data import *
+from EAGLE.src_EAGLE.utils import *
+from EAGLE.src_EAGLE.modules import *
+from EAGLE.src_EAGLE.data import *
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from datetime import datetime
@@ -8,7 +8,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
-from pytorch_lightning.utilities.seed import seed_everything
+# from pytorch_lightning.utilities.seed import seed_everything
 import torch.multiprocessing
 import seaborn as sns
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -20,7 +20,7 @@ import pytz
 import json
 import torch.optim as optim
 from scipy.cluster.hierarchy import linkage, fcluster
-from eigen_modules import  *
+from EAGLE.src_EAGLE.eigen_modules import  *
 import gc
 
 warnings.filterwarnings(action='ignore')
@@ -73,6 +73,7 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
         self.n_classes = n_classes
 
         if not cfg.continuous:
+            # for cityscapes continuous = True
             dim = n_classes
         else:
             dim = cfg.dim   
@@ -105,7 +106,7 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
         self.test_linear_metrics = UnsupervisedMetrics(
             "final/linear/", n_classes, 0, False)
         
-        self.CELoss = newLocalGlobalInfoNCE(cfg, n_classes)
+        self.CELoss = newLocalGlobalInfoNCE(cfg, n_classes) # trying to hack checkpoint loading for eval
         self.eigen_loss_fn = EigenLoss(cfg)
         # self.eigen_new_loss_fn = new_EigenLoss(cfg)
         self.linear_probe_loss_fn = torch.nn.CrossEntropyLoss()
@@ -453,7 +454,7 @@ def my_app(cfg: DictConfig) -> None:
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    seed_everything(seed=0)
+    pl.seed_everything(seed=0)
 
     print(data_dir)
     print(cfg.output_root)

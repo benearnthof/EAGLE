@@ -1,8 +1,8 @@
 import torch
 
-from utils import *
+from EAGLE.src_EAGLE.utils import *
 import torch.nn.functional as F
-import dino.vision_transformer as vits
+import EAGLE.src_EAGLE.dino.vision_transformer as vits
 # from sklearn.cluster import KMeans, MiniBatchKMeans
 import seaborn as sns
 import scipy

@@ -1,10 +1,12 @@
 import torch
-from utils import *
+from EAGLE.src_EAGLE.utils import *
+
 import torch.nn.functional as F
-import dino.vision_transformer as vits
+import EAGLE.src_EAGLE.dino.vision_transformer as vits
+
 from torch.utils.checkpoint import checkpoint
 from torch.cuda.amp import autocast
-import cv2
+# import cv2
 from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import linkage, fcluster
 import gc
@@ -478,7 +480,7 @@ class newLocalGlobalInfoNCE(nn.Module):
                 centroids.append(class_features[torch.argmin(pairwise_dist.sum(0))])
             elif self.cfg.centroid_mode == 'learned':
                 centroids.append(self.learned_centroids[label])
-            elif self.cfg.centroid_mode == 'prototype':
+            elif self.cfg.centroid_mode == 'prototype': # cityscapes
                 pairwise_dist = torch.cdist(class_features, class_features)
                 prototype = class_features[torch.argmin(pairwise_dist.sum(0))]
                 new_prototypes = self.prototypes.clone()  

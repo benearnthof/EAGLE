@@ -1,15 +1,15 @@
-from modules import *
-from data import *
+from EAGLE.src_EAGLE.modules import *
+from EAGLE.src_EAGLE.data import *
 from collections import defaultdict
 from multiprocessing import Pool
 import hydra
 import seaborn as sns
 import torch.multiprocessing
-from crf import dense_crf
+from EAGLE.src_EAGLE.crf import dense_crf
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from train_segmentation_eigen import LitUnsupervisedSegmenter, prep_for_plot, get_class_labels
+from EAGLE.src_EAGLE.train_segmentation_eigen import LitUnsupervisedSegmenter, prep_for_plot, get_class_labels
 import json
 import pytz
 from datetime import datetime
@@ -53,26 +53,40 @@ def batched_crf(pool, img_tensor, prob_tensor):
     outputs = pool.map(_apply_crf, zip(img_tensor.detach().cpu(), prob_tensor.detach().cpu()))
     return torch.cat([torch.from_numpy(arr).unsqueeze(0) for arr in outputs], dim=0)
 
-@hydra.main(config_path="configs", config_name="eval_config.yml")
+@hydra.main(config_path="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs", config_name="eval_config.yml")
 def my_app(cfg: DictConfig) -> None:
+    cityscapes_config = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/train_config_cityscapes.yml"
+    configpath = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/eval_config.yml"
+    import yaml
+    with open(cityscapes_config) as stream:
+        cfg = yaml.safe_load(stream)
+    cfg = DictConfig(cfg)
+
     pytorch_data_dir = cfg.pytorch_data_dir
 
+    model_path = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/EAGLE_Cityscapes_ViTB8.ckpt"
+    model_path = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/EAGLE_COCO_ViTS8.ckpt"
     for model_path in cfg.model_paths:
         print(str(model_path))
         path_ = str(model_path)
 
-        model = LitUnsupervisedSegmenter.load_from_checkpoint(model_path)
+        checkpoint = torch.load(model_path)
+        # checkpoint["state_dict"]["CELoss.learned_centroids"].shape
+        # torch.Size([28, 512])
+        # segmenter = LitUnsupervisedSegmenter(cfg=cfg, n_classes=27)
+        model = LitUnsupervisedSegmenter.load_from_checkpoint(model_path, n_classes=27)
+
         loader_crop = "center"
 
         test_dataset = ContrastiveSegDataset(
             pytorch_data_dir=pytorch_data_dir,
-            dataset_name=model.cfg.dataset_name,
+            dataset_name=cfg.dataset_name,
             crop_type=None,
             image_set="val",
             transform=get_transform(cfg.res, False, loader_crop),
             target_transform=get_transform(cfg.res, True, loader_crop),
             mask=True,
-            cfg=model.cfg,
+            cfg=cfg,
         )
 
         test_loader = DataLoader(test_dataset, cfg.batch_size * 2,
@@ -86,31 +100,25 @@ def my_app(cfg: DictConfig) -> None:
         else:
             par_model = model.net
 
-        saved_data = defaultdict(list)
-        with Pool(cfg.num_workers + 5) as pool:
-            for i, batch in enumerate(tqdm(test_loader)):
-                
-                with torch.no_grad():
-                    img = batch["img"].cuda()
-                    label = batch["label"].cuda()
-                    feats, feats_kk, code1, code_kk = par_model(img)
-                    feats, feats2_kk, code2, code2_kk = par_model(img.flip(dims=[3]))
-                    code = (code_kk + code2_kk.flip(dims=[3])) / 2
-
-                    code = F.interpolate(code, label.shape[-2:], mode='bilinear', align_corners=False)
-
-                    linear_probs = torch.log_softmax(model.linear_probe(code), dim=1)
-                    _, cluster_probs = model.cluster_probe(code, 4, log_probs=True)
-                    
-                    if cfg.run_crf:
-                        linear_preds = batched_crf(pool, img, linear_probs).argmax(1).cuda()
-                        cluster_preds = batched_crf(pool, img, cluster_probs).argmax(1).cuda()
-                    else:
-                        linear_preds = linear_probs.argmax(1)
-                        cluster_preds = cluster_probs.argmax(1)
-
-                    model.test_linear_metrics.update(linear_preds, label)
-                    model.test_cluster_metrics.update(cluster_preds, label)
+        # saved_data = defaultdict(list)
+        for i, batch in enumerate(tqdm(test_loader)):
+            with torch.no_grad():
+                img = batch["img"].cuda()
+                label = batch["label"].cuda()
+                feats, feats_kk, code1, code_kk = par_model(img)
+                feats, feats2_kk, code2, code2_kk = par_model(img.flip(dims=[3]))
+                code = (code_kk + code2_kk.flip(dims=[3])) / 2
+                code = F.interpolate(code, label.shape[-2:], mode='bilinear', align_corners=False)
+                linear_probs = torch.log_softmax(model.linear_probe(code), dim=1)
+                _, cluster_probs = model.cluster_probe(code, 4, log_probs=True)
+                # if cfg.run_crf:
+                #     linear_preds = batched_crf(pool, img, linear_probs).argmax(1).cuda()
+                #     cluster_preds = batched_crf(pool, img, cluster_probs).argmax(1).cuda()
+                # else:
+                linear_preds = linear_probs.argmax(1)
+                cluster_preds = cluster_probs.argmax(1)
+                model.test_linear_metrics.update(linear_preds, label)
+                model.test_cluster_metrics.update(cluster_preds, label)
 
         tb_metrics = {
             **model.test_linear_metrics.compute(training=False),

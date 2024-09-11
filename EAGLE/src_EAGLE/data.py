@@ -14,7 +14,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import json
 from torchvision import transforms as pth_transforms
-import cv2
+# import cv2
 
 def bit_get(val, idx):
     """Gets the bit value.

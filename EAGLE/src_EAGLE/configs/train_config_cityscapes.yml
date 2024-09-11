@@ -1,5 +1,7 @@
-output_root: '../'
-pytorch_data_dir: 'pytorch_data_dir'
+output_root: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE'
+pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data' 
+save_pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data'
+
 experiment_name: "cityscapes_EAGLE"
 log_dir: "cityscapes"
 dataset_name: "cityscapes"
@@ -38,6 +40,7 @@ use_head: True
 extra_clusters: 1
 use_true_labels: False
 use_recalibrator: False
+# Adjust for custom EAGLE 
 model_type: "vit_base"
 arch: "dino"
 use_fit_model: False
