@@ -5,16 +5,16 @@ save_pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data'
 experiment_name: "cityscapes_EAGLE"
 log_dir: "cityscapes"
 dataset_name: "cityscapes"
-azureml_logging: True
+azureml_logging: False
 submitting_to_aml: False
 
 # wandb params
 project_name: "EAGLE" 
-entity: "your_ID"
+entity: ""
 
 # Loader params
 num_workers: 24
-max_steps: 6000
+max_steps: 50000
 batch_size: 32
 step_schedulers: 380
 dir_dataset_name: ~

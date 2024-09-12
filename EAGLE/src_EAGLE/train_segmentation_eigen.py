@@ -23,6 +23,9 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from EAGLE.src_EAGLE.eigen_modules import  *
 import gc
 
+with open("/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/wandb_api_key.txt") as keyfile:
+    WANDB_API_KEY = keyfile.read()
+
 warnings.filterwarnings(action='ignore')
 torch.multiprocessing.set_sharing_strategy('file_system')
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -308,14 +311,20 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             cluster_preds = cluster_preds.argmax(1)
             self.cluster_metrics.update(cluster_preds, label)
 
-            return {
+            output = {
                 'img': img[:self.cfg.n_images].detach().cpu(),
                 'linear_preds': linear_preds[:self.cfg.n_images].detach().cpu(),
                 "cluster_preds": cluster_preds[:self.cfg.n_images].detach().cpu(),
                 "label": label[:self.cfg.n_images].detach().cpu()}
+            
+            if not hasattr(self, "val_outputs"):
+                self.val_outputs = []
+            self.val_outputs.append(output)
 
-    def validation_epoch_end(self, outputs) -> None:
-        super().validation_epoch_end(outputs)
+            if batch_idx == 0:
+                return output
+
+    def on_validation_epoch_end(self) -> None:
         with torch.no_grad():
             tb_metrics = {
                 **self.linear_metrics.compute(training=True),
@@ -323,9 +332,9 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             }
 
             if self.trainer.is_global_zero and not self.cfg.submitting_to_aml:
-                #output_num = 0
-                output_num = random.randint(0, len(outputs) -1)
-                output = {k: v.detach().cpu() for k, v in outputs[output_num].items()}
+                output_num = 0
+                # ooutput_num = random.randint(0, len(self.val_outputs) -1)
+                output = self.val_outputs[output_num]
 
                 fig, ax = plt.subplots(4, self.cfg.n_images, figsize=(self.cfg.n_images * 3, 4 * 3))
                 for i in range(self.cfg.n_images):
@@ -435,8 +444,12 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             return net_optim, linear_probe_optim, cluster_probe_optim, cluster_eigen_optim, cluster_eigen_optim_aug
 
 
-@hydra.main(config_path="configs", config_name="train_config_cocostuff.yml")
+@hydra.main(config_path="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/", config_name="train_config_cityscapes.yml")
 def my_app(cfg: DictConfig) -> None:
+    wandb_config = dict(cfg)
+    wandb.login(key=WANDB_API_KEY)
+    wandb.init(project="eagle-experiments", config=wandb_config, name=wandb_config["experiment_name"])
+
     OmegaConf.set_struct(cfg, False)
     print(OmegaConf.to_yaml(cfg))
     pytorch_data_dir = cfg.pytorch_data_dir
@@ -445,7 +458,7 @@ def my_app(cfg: DictConfig) -> None:
     checkpoint_dir = join(cfg.output_root, "checkpoints")
     exp_name = f"{cfg.experiment_name}"
 
-    tz = pytz.timezone('Asia/Seoul')
+    tz = pytz.timezone('Europe/Berlin')
     prefix = "{}/{}_{}_{}_{}".format(cfg.dataset_name, cfg.log_dir, datetime.now(tz).strftime('%b%d_%H-%M-%S'),cfg.model_type, exp_name)
 
     cfg.full_name = prefix
@@ -532,14 +545,14 @@ def my_app(cfg: DictConfig) -> None:
             ModelCheckpoint(
                 dirpath=join(checkpoint_dir, prefix),
                 every_n_train_steps=100,
-                save_top_k=5,
-                monitor="test/cluster/mIoU",
+                save_top_k=1,
+                monitor="test/cluster/Accuracy",
                 mode="max",
-                filename='{epoch:02d}-{step:08d}-{test/cluster/mIoU:.2f}'
+                filename='{epoch:02d}-{step:08d}-{test/cluster/acc:.2f}'
             )
         ],
         num_sanity_val_steps=0,
-        **gpu_args
+        accelerator="auto"
     )
     trainer.fit(model, train_loader, val_loader)
 
