@@ -55,26 +55,13 @@ def batched_crf(pool, img_tensor, prob_tensor):
 
 @hydra.main(config_path="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs", config_name="eval_config.yml")
 def my_app(cfg: DictConfig) -> None:
-    cityscapes_config = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/train_config_cityscapes.yml"
-    configpath = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/eval_config.yml"
-    import yaml
-    with open(cityscapes_config) as stream:
-        cfg = yaml.safe_load(stream)
-    cfg = DictConfig(cfg)
-
     pytorch_data_dir = cfg.pytorch_data_dir
 
-    model_path = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/EAGLE_Cityscapes_ViTB8.ckpt"
-    model_path = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/EAGLE_COCO_ViTS8.ckpt"
     for model_path in cfg.model_paths:
         print(str(model_path))
         path_ = str(model_path)
 
-        checkpoint = torch.load(model_path)
-        # checkpoint["state_dict"]["CELoss.learned_centroids"].shape
-        # torch.Size([28, 512])
-        # segmenter = LitUnsupervisedSegmenter(cfg=cfg, n_classes=27)
-        model = LitUnsupervisedSegmenter.load_from_checkpoint(model_path, n_classes=27)
+        model = LitUnsupervisedSegmenter.load_from_checkpoint(model_path)
 
         loader_crop = "center"
 
@@ -89,7 +76,7 @@ def my_app(cfg: DictConfig) -> None:
             cfg=cfg,
         )
 
-        test_loader = DataLoader(test_dataset, cfg.batch_size * 2,
+        test_loader = DataLoader(test_dataset, 1,
                                 shuffle=False, num_workers=cfg.num_workers,
                                 pin_memory=True, collate_fn=flexible_collate)
 
@@ -101,6 +88,7 @@ def my_app(cfg: DictConfig) -> None:
             par_model = model.net
 
         # saved_data = defaultdict(list)
+        # with Pool(cfg.num_workers + 5) as pool:
         for i, batch in enumerate(tqdm(test_loader)):
             with torch.no_grad():
                 img = batch["img"].cuda()
@@ -111,12 +99,13 @@ def my_app(cfg: DictConfig) -> None:
                 code = F.interpolate(code, label.shape[-2:], mode='bilinear', align_corners=False)
                 linear_probs = torch.log_softmax(model.linear_probe(code), dim=1)
                 _, cluster_probs = model.cluster_probe(code, 4, log_probs=True)
-                # if cfg.run_crf:
-                #     linear_preds = batched_crf(pool, img, linear_probs).argmax(1).cuda()
-                #     cluster_preds = batched_crf(pool, img, cluster_probs).argmax(1).cuda()
-                # else:
-                linear_preds = linear_probs.argmax(1)
-                cluster_preds = cluster_probs.argmax(1)
+                if cfg.run_crf:
+                    # remove batch dim, run with batchsize 1
+                    linear_preds = torch.from_numpy(dense_crf(img.squeeze(0), linear_probs.squeeze(0))).unsqueeze(0).argmax(1).cuda()
+                    cluster_preds = torch.from_numpy(dense_crf(img.squeeze(0), cluster_probs.squeeze(0))).unsqueeze(0).argmax(1).cuda()
+                else:
+                    linear_preds = linear_probs.argmax(1)
+                    cluster_preds = cluster_probs.argmax(1)
                 model.test_linear_metrics.update(linear_preds, label)
                 model.test_cluster_metrics.update(cluster_preds, label)
 
