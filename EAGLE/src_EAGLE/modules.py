@@ -22,6 +22,51 @@ class LambdaLayer(nn.Module):
 def normalize(*xs):
     return [None if x is None else F.normalize(x, dim=-1) for x in xs]
 
+class DinoV2Featurizer(nn.Module):
+    """
+    Experimenting with DINOv2 Embeddings & EAGLE
+    """
+    def __init__(self, dim, cfg):
+        super().__init__()
+        self.cfg = cfg
+        self.dim = dim
+        patch_size = self.cfg.dino_patch_size
+        self.patch_size = patch_size
+        self.feat_type = self.cfg.dino_feat_type
+        arch = self.cfg.model_type
+        if "dinov2" in arch:
+            self.model = torch.hub.load('facebookresearch/dinov2', f"{arch}")
+        else:
+            raise ValueError(f"{arch} is not a valid model architecture for DINOv2.")
+        for p in self.model.parameters():
+            p.requires_grad = False
+        self.model.eval().cuda()
+        self.dropout = torch.nn.Dropout2d(p=.1)
+        # set up the cluster layers accordign to inner representation size of DINOv2
+        if "s" in arch: # small model
+            self.n_feats = 384
+        elif "b" in arch: # base model
+            self.n_feats = 768
+        elif "l" in arch: # large model
+            self.n_feats = 1024
+        else: # giant model
+            self.n_feats = 1536
+        
+        self.cluster1 = self.make_clusterer(self.n_feats)
+        self.proj_type = cfg.projection_type
+        if self.proj_type == "nonlinear":
+            self.cluster2 = self.make_nonlinear_clusterer(self.n_feats)
+
+    def make_clusterer(self, in_channels):
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels, self.dim, (1, 1)))
+
+    def make_nonlinear_clusterer(self, in_channels):
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(in_channels, in_channels, (1, 1)),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(in_channels, self.dim, (1, 1))) 
+
 class DinoFeaturizer(nn.Module):
 
     def __init__(self, dim, cfg):

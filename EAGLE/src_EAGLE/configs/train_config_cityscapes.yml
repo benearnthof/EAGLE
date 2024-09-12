@@ -14,7 +14,7 @@ entity: ""
 
 # Loader params
 num_workers: 24
-max_steps: 50000
+max_steps: 25000
 batch_size: 32
 step_schedulers: 380
 dir_dataset_name: ~
@@ -27,9 +27,9 @@ res: 224
 loader_crop_type: "center"
 
 # lr
-lr_linear: 5e-3 
-lr_cluster: 3e-3 
-lr_cluster_eigen: 5e-4
+lr_linear: 0.004
+lr_cluster: 0.003
+lr_cluster_eigen: 0.0005
 
 # eigen
 eigen_cluster: 4
@@ -53,7 +53,7 @@ dim: 512
 dropout: True
 zero_clamp: True
 recluster_threshold: 0.85
-lr: 5e-4
+lr: 0.0005
 pretrained_weights: ~
 stabalize: True
 stop_at_zero: True
@@ -76,8 +76,13 @@ momentum_limit: 0.7
 centroid_mode: "prototype"
 
 neg_inter_weight: 1.0
-pos_inter_weight: 0.18
+pos_inter_weight: 0.3
 pos_intra_weight: 1
+
+neg_inter_shift: 0.31361241889448443
+pos_inter_shift: 0.1754346515479633
+pos_intra_shift: 0.45828472207
+
 
 rec_weight: 0.0
 repulsion_weight: 0.0
@@ -97,9 +102,9 @@ reset_probe_steps: ~
 
 n_images: 4
 scalar_log_freq: 10
-checkpoint_freq: 100
-val_freq: 100
-hist_freq: 100
+checkpoint_freq: 10
+val_freq: 10
+hist_freq: 10
 
 
 hydra:
