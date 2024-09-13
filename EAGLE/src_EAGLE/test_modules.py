@@ -10,13 +10,14 @@ n_register_tokens = 4
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-# dinov2 = vit_giant2(
-#         patch_size=14,
-#         img_size=600,
-#         init_values=1.0,
-#         num_register_tokens=n_register_tokens,
-#         block_chunks=0
-# )
+dinov2 = vit_giant2(
+        patch_size=14,
+        img_size=518,
+        init_values=1.0,
+        num_register_tokens=n_register_tokens,
+        block_chunks=0,
+        ffn_layer="swiglufused"
+)
 
 img_size = 224
 
@@ -41,8 +42,12 @@ model_type = "dinov2_vitg14_reg"
 state_dict = torch.hub.load('facebookresearch/dinov2', f"{model_type}").state_dict()
 
 model = torch.hub.load('facebookresearch/dinov2', f"{model_type}")
+model.patch_embed.num_patches
+
 
 dinov2.load_state_dict(state_dict)
+# small, base and large
+
 
 # size mismatch for pos_embed
 # checkpoint:   [1, 1370, 1536]
@@ -78,6 +83,8 @@ dinov2.eval()
 img = torch.ones([1, 3, 224, 224])
 img = img.cuda()
 
+with torch.no_grad():
+    out = dinov2(img)
 
 # forward of dinov1 featurizer uses the last three attention layer representations like so:
 # stepping forward through dinov1 and dinov2 to verify everything has the correct shape

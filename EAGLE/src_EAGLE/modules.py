@@ -11,6 +11,12 @@ from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import linkage, fcluster
 import gc
 
+# We use a custom fork of dinov2 that adds this functionality:
+# https://github.com/facebookresearch/dinov2/compare/main...3cology:dinov2_with_attention_extraction:main
+# This means we should now be able to obtain feature maps from dinov2 aswell
+# from dinov2.models.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
+import dinov2.models.vision_transformer as vits
+
 class LambdaLayer(nn.Module):
     def __init__(self, lambd):
         super(LambdaLayer, self).__init__()
@@ -30,29 +36,37 @@ class DinoV2Featurizer(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.dim = dim
-        patch_size = self.cfg.dino_patch_size
+        patch_size = 14 # must be 14 for dinov2
         self.patch_size = patch_size
         self.feat_type = self.cfg.dino_feat_type
         arch = self.cfg.model_type
-        if "dinov2" in arch:
-            # TODO: swap this with custom vision transformer skeleton that implements feat method
-            self.model = torch.hub.load('facebookresearch/dinov2', f"{arch}")
-        else:
+        if not arch in ["vit_small", "vit_base", "vit_large", "vit_giant2"]:
             raise ValueError(f"{arch} is not a valid model architecture for DINOv2.")
+        # we always use the vision transformer with registers, since this strictly increases performance
+        if not arch == "vit_giant2":
+            self.model = vits.__dict__[arch](
+                patch_size = self.patch_size,
+                img_size = 518,
+                num_register_tokens=4,
+                block_chunks=0,
+            )
+        else: # need swiglu for giant model
+            self.model = vits.__dict__[arch](
+                patch_size = self.patch_size,
+                img_size = 518,
+                num_register_tokens=4,
+                block_chunks=0,
+                ffn_layer= "swiglufused"
+            )
+        
         for p in self.model.parameters():
             p.requires_grad = False
         self.model.eval().cuda()
         self.dropout = torch.nn.Dropout2d(p=.1)
         # set up the cluster layers accordign to inner representation size of DINOv2
-        if "s" in arch: # small model
-            self.n_feats = 384
-        elif "b" in arch: # base model
-            self.n_feats = 768
-        elif "l" in arch: # large model
-            self.n_feats = 1024
-        else: # giant model
-            self.n_feats = 1536
-        
+        # last out_feature size is by default what we are looking for regardless of model
+        self.n_feats = self.model.blocks[-1][-1].mlp.fc2.out_features
+
         self.cluster1 = self.make_clusterer(self.n_feats)
         self.proj_type = cfg.projection_type
         if self.proj_type == "nonlinear":
