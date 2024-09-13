@@ -2,7 +2,7 @@ output_root: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE
 pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data' 
 save_pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data'
 
-experiment_name: "cityscapes_EAGLE"
+experiment_name: "cityscapes_EAGLE_dinov2"
 log_dir: "cityscapes"
 dataset_name: "cityscapes"
 azureml_logging: False
@@ -41,8 +41,8 @@ extra_clusters: 1
 use_true_labels: False
 use_recalibrator: False
 # Adjust for custom EAGLE 
-model_type: "vit_base"
-arch: "dino"
+model_type: "vit_base" # "vit_small" # "vit_large" # "vit_giant2"
+arch: "dinov2"
 use_fit_model: False
 dino_feat_type: "KK"
 projection_type: "nonlinear"

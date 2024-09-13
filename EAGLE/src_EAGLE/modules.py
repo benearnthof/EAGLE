@@ -15,7 +15,7 @@ import gc
 # https://github.com/facebookresearch/dinov2/compare/main...3cology:dinov2_with_attention_extraction:main
 # This means we should now be able to obtain feature maps from dinov2 aswell
 # from dinov2.models.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
-import dinov2.models.vision_transformer as vits
+import dinov2.models.vision_transformer as vits_v2
 
 class LambdaLayer(nn.Module):
     def __init__(self, lambd):
@@ -32,26 +32,25 @@ class DinoV2Featurizer(nn.Module):
     """
     Experimenting with DINOv2 Embeddings & EAGLE
     """
-    def __init__(self, dim, cfg):
+    def __init__(self, dim, cfg, k=3):
         super().__init__()
         self.cfg = cfg
         self.dim = dim
-        patch_size = 14 # must be 14 for dinov2
-        self.patch_size = patch_size
+        self.patch_size = 14
         self.feat_type = self.cfg.dino_feat_type
         arch = self.cfg.model_type
         if not arch in ["vit_small", "vit_base", "vit_large", "vit_giant2"]:
             raise ValueError(f"{arch} is not a valid model architecture for DINOv2.")
         # we always use the vision transformer with registers, since this strictly increases performance
         if not arch == "vit_giant2":
-            self.model = vits.__dict__[arch](
+            self.model = vits_v2.__dict__[arch](
                 patch_size = self.patch_size,
                 img_size = 518,
                 num_register_tokens=4,
                 block_chunks=0,
             )
         else: # need swiglu for giant model
-            self.model = vits.__dict__[arch](
+            self.model = vits_v2.__dict__[arch](
                 patch_size = self.patch_size,
                 img_size = 518,
                 num_register_tokens=4,
@@ -65,7 +64,8 @@ class DinoV2Featurizer(nn.Module):
         self.dropout = torch.nn.Dropout2d(p=.1)
         # set up the cluster layers accordign to inner representation size of DINOv2
         # last out_feature size is by default what we are looking for regardless of model
-        self.n_feats = self.model.blocks[-1][-1].mlp.fc2.out_features
+        # we have to multiply by k since we return the k last features
+        self.n_feats = self.model.blocks[-1].mlp.fc2.out_features * k
 
         self.cluster1 = self.make_clusterer(self.n_feats)
         self.proj_type = cfg.projection_type
@@ -103,8 +103,9 @@ class DinoV2Featurizer(nn.Module):
             for index in range(k):
                 # we're interested in the k last feature maps so we loop over the reversed lists
                 feat, attn, qkv = feat_all[::-1][index], attn_all[::-1][index], qkv_all[::-1][index]
-                img_feat = feat[:, 1:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
-                img_k = qkv[1, :, :, 1:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
+                # discard first 5 channels each to fit required dimensions for conv2d
+                img_feat = feat[:, 5:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
+                img_k = qkv[1, :, :, 5:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
                 B, H, I, J, D = img_k.shape
                 img_kk = img_k.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
                 # Will yield features in order: high, mid, low
@@ -118,19 +119,19 @@ class DinoV2Featurizer(nn.Module):
             if return_class_feat:
                 return feat_all[-1][:, :1, :].reshape(feat_all[-1].shape[0], 1, 1, -1).permute(0, 3, 1, 2)
 
-        if proj_type is not None:
+        if self.proj_type is not None:
             with torch.no_grad():
-                code = cluster1(dropout(image_feat))
-            code_kk = cluster1(dropout(image_kk))
-            if proj_type == "nonlinear":
-                code += cluster2(dropout(image_feat))
-                code_kk += cluster2(dropout(image_kk))
+                code = self.cluster1(self.dropout(image_feat))
+            code_kk = self.cluster1(self.dropout(image_kk))
+            if self.proj_type == "nonlinear":
+                code += self.cluster2(self.dropout(image_feat))
+                code_kk += self.cluster2(self.dropout(image_kk))
         else:
             code = image_feat
             code_kk = image_kk
 
-        if cfg.dropout:
-            return dropout(image_feat), dropout(image_kk), code, code_kk
+        if self.cfg.dropout:
+            return self.dropout(image_feat), self.dropout(image_kk), code, code_kk
         else:
             return image_feat, image_kk, code, code_kk
 
