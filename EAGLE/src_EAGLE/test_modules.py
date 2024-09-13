@@ -1,39 +1,71 @@
 import EAGLE.src_EAGLE.dino.vision_transformer as vits
 import torch
 
-# loading dinov1
-patch_size = 16
-arch = "vit_base"
-dinov1 = vits.__dict__[arch](patch_size=patch_size, num_classes=0)
-for p in dinov1.parameters():
-    p.requires_grad = False
-
-dinov1.eval().cuda()
-
-url = "dino_vitbase16_pretrain/dino_vitbase16_pretrain.pth"
-state_dict = torch.hub.load_state_dict_from_url(url="https://dl.fbaipublicfiles.com/dino/" + url)
-dinov1.load_state_dict(state_dict, strict=True)
-dinov1.eval().cuda()
-
 # We use a custom fork of dinov2 that adds this functionality:
 # https://github.com/facebookresearch/dinov2/compare/main...3cology:dinov2_with_attention_extraction:main
 # This means we should now be able to obtain feature maps from dinov2 aswell
-from dinov2.models.vision_transformer import vit_small, vit_base, vit_large
+from dinov2.models.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
 patch_size = 14
 n_register_tokens = 4
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-dinov2 = vit_base(
-        patch_size=14,
-        img_size=526,
-        init_values=1.0,
-        num_register_tokens=n_register_tokens,
-        block_chunks=0
-)
-model_type = "dinov2_vitb14_reg"
+# dinov2 = vit_giant2(
+#         patch_size=14,
+#         img_size=600,
+#         init_values=1.0,
+#         num_register_tokens=n_register_tokens,
+#         block_chunks=0
+# )
+
+img_size = 224
+
+configpath = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/vitg14.yaml"
+from dinov2.models import build_model_from_cfg
+import yaml
+from omegaconf import OmegaConf
+from dinov2.configs import dinov2_default_config
+
+default_config = dinov2_default_config
+cfg = OmegaConf.load(configpath)
+cfg = OmegaConf.merge(default_config, cfg)
+
+cfg.student["block_chunks"] = 0
+cfg.student["num_register_tokens"] = 4
+cfg.crops.global_crops_size = 518
+
+dinov2 = build_model_from_cfg(cfg, only_teacher=True)[0]
+
+
+model_type = "dinov2_vitg14_reg"
 state_dict = torch.hub.load('facebookresearch/dinov2', f"{model_type}").state_dict()
+
+model = torch.hub.load('facebookresearch/dinov2', f"{model_type}")
+
 dinov2.load_state_dict(state_dict)
+
+# size mismatch for pos_embed
+# checkpoint:   [1, 1370, 1536]
+# hull:        [1, 257, 1536]
+# middle dimension = num_patches + num_tokens
+# num_patches = self.patch_embed.num_patches
+# num_tokens = 1
+# num_patches = 1369
+
+patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
+
+image_HW = (518, 518)
+patch_HW = (patch_size, patch_size)
+patch_grid_size = (
+    image_HW[0] // patch_HW[0],
+    image_HW[1] // patch_HW[1],
+)
+
+num_patches = patch_grid_size[0] * patch_grid_size[1]
+
+
+
+
 
 for p in dinov2.parameters():
     p.requires_grad = False
