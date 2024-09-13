@@ -14,7 +14,7 @@ entity: ""
 
 # Loader params
 num_workers: 24
-max_steps: 25000
+max_steps: 5000
 batch_size: 32
 step_schedulers: 380
 dir_dataset_name: ~
@@ -41,7 +41,7 @@ extra_clusters: 1
 use_true_labels: False
 use_recalibrator: False
 # Adjust for custom EAGLE 
-model_type: "vit_base"
+model_type: "vit_small"
 arch: "dino"
 use_fit_model: False
 dino_feat_type: "KK"

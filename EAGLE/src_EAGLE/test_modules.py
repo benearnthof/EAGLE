@@ -2,7 +2,7 @@ import EAGLE.src_EAGLE.dino.vision_transformer as vits
 import torch
 
 # loading dinov1
-patch_size = 8
+patch_size = 16
 arch = "vit_base"
 dinov1 = vits.__dict__[arch](patch_size=patch_size, num_classes=0)
 for p in dinov1.parameters():
@@ -10,7 +10,7 @@ for p in dinov1.parameters():
 
 dinov1.eval().cuda()
 
-url = "dino_vitbase8_pretrain/dino_vitbase8_pretrain.pth"
+url = "dino_vitbase16_pretrain/dino_vitbase16_pretrain.pth"
 state_dict = torch.hub.load_state_dict_from_url(url="https://dl.fbaipublicfiles.com/dino/" + url)
 dinov1.load_state_dict(state_dict, strict=True)
 dinov1.eval().cuda()
@@ -51,75 +51,55 @@ img = img.cuda()
 # stepping forward through dinov1 and dinov2 to verify everything has the correct shape
 
 dinov1.eval()
-with torch.no_grad():
-    patch_size_v1 = 8
-    patch_size_v2 = 14
-    assert (img.shape[2] % patch_size_v1 == 0)
-    assert (img.shape[3] % patch_size_v1 == 0)
-    assert (img.shape[2] % patch_size_v2 == 0)
-    assert (img.shape[3] % patch_size_v2 == 0)
 
+def collate_features(img, patch_size, encoder, k=3):
+    """
+    This function wraps the fancy feature extraction EAGLE does with Dino to a generic function that can 
+    also be used to extract image features and their attention maps from DINOv2, as long as DINOv2 implements
+    the `get_intermediate_feat` method.
 
-    feat_h_v1 = img.shape[2] // patch_size_v1
-    feat_w_v1 = img.shape[3] // patch_size_v1
-
-    feat_h_v2 = img.shape[2] // patch_size_v2
-    feat_w_v2 = img.shape[3] // patch_size_v2
-
-
-    feat_all, attn_all, qkv_all = dinov1.get_intermediate_feat(img, n=1)
-    feat_all_v2, attn_all_v2, qkv_all_v2 = dinov2.get_intermediate_feat(img, n=1)
-    # all lists are still of length 12 because both models have 12 blocks each
-    feat_all[-1].shape, feat_all_v2[-1].shape 
-    attn_all[-1].shape, attn_all_v2[-1].shape
-    qkv_all[-1].shape, qkv_all_v2[-1].shape
-    # they still have slightly different shapes but we're on the right track at least
-    
-
-    # high level
-    feat, attn, qkv = feat_all[-1], attn_all[-1], qkv_all[-1]
-    feat_v2, attn_v2, qkv_v2 = feat_all_v2[-1], attn_all_v2[-1], qkv_all_v2[-1]
-    
-    image_feat_high = feat[:, 1:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
-    image_k_high = qkv[1, :, :, 1:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
-    B, H, I, J, D = image_k_high.shape
-    image_kk_high = image_k_high.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
-                
-    # mid level
-    feat_mid, attn_mid, qkv_mid = feat_all[-2], attn_all[-2], qkv_all[-2]
-    
-    image_feat_mid = feat_mid[:, 1:, :].reshape(feat_mid.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
-    image_k_mid = qkv_mid[1, :, :, 1:, :].reshape(feat_mid.shape[0], attn.shape[1], feat_h, feat_w, -1)
-    B, H, I, J, D = image_k_mid.shape
-    image_kk_mid = image_k_mid.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
-    
-    # low level
-    feat_low, attn_low, qkv_low = feat_all[-3], attn_all[-3], qkv_all[-3]
-    
-    image_feat_low = feat_low[:, 1:, :].reshape(feat_low.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
-    image_k_low = qkv_low[1, :, :, 1:, :].reshape(feat_low.shape[0], attn.shape[1], feat_h, feat_w, -1)
-    B, H, I, J, D = image_k_low.shape
-    image_kk_low = image_k_low.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
-    
-    image_feat = torch.cat([image_feat_low, image_feat_mid, image_feat_high], dim=1)
-    image_kk  = torch.cat([image_kk_low, image_kk_mid, image_kk_high], dim=1)
-    
-    
-    if return_class_feat:
-        return feat[:, :1, :].reshape(feat.shape[0], 1, 1, -1).permute(0, 3, 1, 2)
-
-if proj_type is not None:
+    Args:
+        img: Image to be encoded, height and width must be evenly divisible by `patch_size`
+        patch_size: The patch size of the DINO vision transformer used to encode the image.
+        encoder: Some vision Transformer that implements the `get_intermediate_feat` method.
+        k: integer that specifies how many feature maps should be collected. EAGLE uses 3 by default
+    """
+    assert (img.shape[2] % patch_size == 0 and img.shape[3] % patch_size == 0)
+    feat_h, feat_w = img.shape[2] // patch_size, img.shape[3] // patch_size
+    # pass image through frozen encoder
     with torch.no_grad():
-        code = cluster1(dropout(image_feat))
-    code_kk = cluster1(dropout(image_kk))
-    if proj_type == "nonlinear":
-        code += cluster2(dropout(image_feat))
-        code_kk += cluster2(dropout(image_kk))
-else:
-    code = image_feat
-    code_kk = image_kk
+        feat_all, attn_all, qkv_all = model.get_intermediate_feat(img, n=1)
+        image_features, image_features_kk = [], []
+        for index in range(k):
+            # we're interested in the k last feature maps so we loop over the reversed lists
+            feat, attn, qkv = feat_all[::-1][index], attn_all[::-1][index], qkv_all[::-1][index]
+            img_feat = feat[:, 1:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
+            img_k = qkv[1, :, :, 1:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
+            B, H, I, J, D = img_k.shape
+            img_kk = img_k.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
+            # Will yield features in order: high, mid, low
+            image_features.append(img_feat)
+            image_features_kk.append(img_kk)
+        # now reorder to low, mid, high and concatenate to torch tensors
+        image_feat = torch.cat(image_features[::-1], dim=1)
+        image_kk = torch.cat(image_features_kk[::-1], dim=1)
+                
+        # class feat is just high level features
+        if return_class_feat:
+            return feat_all[-1][:, :1, :].reshape(feat_all[-1].shape[0], 1, 1, -1).permute(0, 3, 1, 2)
 
-if cfg.dropout:
-    return dropout(image_feat), dropout(image_kk), code, code_kk
-else:
-    return image_feat, image_kk, code, code_kk
+    if proj_type is not None:
+        with torch.no_grad():
+            code = cluster1(dropout(image_feat))
+        code_kk = cluster1(dropout(image_kk))
+        if proj_type == "nonlinear":
+            code += cluster2(dropout(image_feat))
+            code_kk += cluster2(dropout(image_kk))
+    else:
+        code = image_feat
+        code_kk = image_kk
+
+    if cfg.dropout:
+        return dropout(image_feat), dropout(image_kk), code, code_kk
+    else:
+        return image_feat, image_kk, code, code_kk

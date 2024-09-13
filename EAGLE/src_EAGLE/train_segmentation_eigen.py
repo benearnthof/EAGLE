@@ -544,7 +544,7 @@ def my_app(cfg: DictConfig) -> None:
         callbacks=[
             ModelCheckpoint(
                 dirpath=join(checkpoint_dir, prefix),
-                every_n_train_steps=100,
+                every_n_train_steps=10,
                 save_top_k=1,
                 monitor="test/cluster/Accuracy",
                 mode="max",

@@ -20,8 +20,10 @@ pretrained_weights: ~
 dataset_name: "cityscapes"
 
 model_paths:
+#  - '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/STEGO_CUSTOM/checkpoints/STEGO_DINOv2_city_dim_100_2024-09-10/step1695-clust_acc81.69.ckpt'
 # - '../checkpoints/EAGLE_COCO_ViTS8.ckpt'
-  - '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/checkpoints/cityscapes/cityscapes_Sep12_13-23-10_vit_base_cityscapes_EAGLE/epoch=01-step=00003500-test/cluster/acc=0.00.ckpt'
+#  - '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/checkpoints/cityscapes/cityscapes_Sep12_17-51-36_vit_base_cityscapes_EAGLE/epoch=01-step=00003290-test/cluster/acc=0.00.ckpt'
+  - '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE/EAGLE_Cityscapes_ViTB8.ckpt'
 
 hydra:
   run:

@@ -35,6 +35,7 @@ class DinoV2Featurizer(nn.Module):
         self.feat_type = self.cfg.dino_feat_type
         arch = self.cfg.model_type
         if "dinov2" in arch:
+            # TODO: swap this with custom vision transformer skeleton that implements feat method
             self.model = torch.hub.load('facebookresearch/dinov2', f"{arch}")
         else:
             raise ValueError(f"{arch} is not a valid model architecture for DINOv2.")
@@ -65,7 +66,59 @@ class DinoV2Featurizer(nn.Module):
         return torch.nn.Sequential(
             torch.nn.Conv2d(in_channels, in_channels, (1, 1)),
             torch.nn.ReLU(),
-            torch.nn.Conv2d(in_channels, self.dim, (1, 1))) 
+            torch.nn.Conv2d(in_channels, self.dim, (1, 1)))
+    
+    def forward(self, img, k=3, return_class_feat=False):
+        """
+        This function wraps the fancy feature extraction EAGLE does with Dino to a generic function that can 
+        also be used to extract image features and their attention maps from DINOv2, as long as DINOv2 implements
+        the `get_intermediate_feat` method.
+
+        Args:
+            img: Image to be encoded, height and width must be evenly divisible by `patch_size`
+            k: integer that specifies how many feature maps should be collected. EAGLE uses 3 by default
+            return_class_feat: added for backwards compatibility
+        """
+        self.model.eval()
+        assert (img.shape[2] % self.patch_size == 0 and img.shape[3] % self.patch_size == 0)
+        feat_h, feat_w = img.shape[2] // self.patch_size, img.shape[3] // self.patch_size
+        # pass image through frozen encoder
+        with torch.no_grad():
+            feat_all, attn_all, qkv_all = self.model.get_intermediate_feat(img, n=1)
+            image_features, image_features_kk = [], []
+            for index in range(k):
+                # we're interested in the k last feature maps so we loop over the reversed lists
+                feat, attn, qkv = feat_all[::-1][index], attn_all[::-1][index], qkv_all[::-1][index]
+                img_feat = feat[:, 1:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
+                img_k = qkv[1, :, :, 1:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
+                B, H, I, J, D = img_k.shape
+                img_kk = img_k.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
+                # Will yield features in order: high, mid, low
+                image_features.append(img_feat)
+                image_features_kk.append(img_kk)
+            # now reorder to low, mid, high and concatenate to torch tensors
+            image_feat = torch.cat(image_features[::-1], dim=1)
+            image_kk = torch.cat(image_features_kk[::-1], dim=1)
+                    
+            # class feat is just high level features
+            if return_class_feat:
+                return feat_all[-1][:, :1, :].reshape(feat_all[-1].shape[0], 1, 1, -1).permute(0, 3, 1, 2)
+
+        if proj_type is not None:
+            with torch.no_grad():
+                code = cluster1(dropout(image_feat))
+            code_kk = cluster1(dropout(image_kk))
+            if proj_type == "nonlinear":
+                code += cluster2(dropout(image_feat))
+                code_kk += cluster2(dropout(image_kk))
+        else:
+            code = image_feat
+            code_kk = image_kk
+
+        if cfg.dropout:
+            return dropout(image_feat), dropout(image_kk), code, code_kk
+        else:
+            return image_feat, image_kk, code, code_kk
 
 class DinoFeaturizer(nn.Module):
 
@@ -508,7 +561,10 @@ class newLocalGlobalInfoNCE(nn.Module):
     def __init__(self, cfg, num_classes):
         super(newLocalGlobalInfoNCE, self).__init__()
         self.cfg = cfg
-        self.learned_centroids = nn.Parameter(torch.randn(num_classes, cfg.dim))
+        if cfg.dataset_name == 'cityscapes':
+            self.learned_centroids = nn.Parameter(torch.randn(num_classes+1, cfg.dim))
+        else:
+            self.learned_centroids = nn.Parameter(torch.randn(num_classes, cfg.dim))
         self.prototypes = torch.randn(num_classes + cfg.extra_clusters, cfg.dim, requires_grad=True)
         
     def compute_centroid(self, features, labels):
