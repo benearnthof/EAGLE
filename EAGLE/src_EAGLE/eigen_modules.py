@@ -143,10 +143,13 @@ def get_diagonal(W, threshold: float=1e-12):
     return D_diag
 
 class EigenLoss(nn.Module):
+    # TODO: adjust for other patch_sizes
     def __init__(self, cfg, ):
         super(EigenLoss, self).__init__()
         self.cfg = cfg
         self.eigen_cluster = cfg.eigen_cluster
+        # eigen_cluster: 4
+        # eigen_cluster_out: 28
 
     def normalized_laplacian(self, L, D):
         D_inv_sqrt = torch.inverse(torch.sqrt(D))
@@ -211,7 +214,7 @@ class EigenLoss(nn.Module):
         
         max_values = w_combs.max(dim=-1, keepdim=True)[0].max(dim=-2, keepdim=True)[0]
         w_combs = w_combs / max_values 
-
+        # where does laplacian get its 784 shape from?
         W_comb = w_combs + adj
         D_comb = torch.stack([get_diagonal(w_comb) for w_comb in W_comb])
         L_comb = D_comb - W_comb
@@ -265,7 +268,10 @@ class EigenLoss(nn.Module):
 
     def lalign(self, img, Y, code, adj, adj_code, code_neg_torch, neg_sample=5):
         if code_neg_torch is None:
-            if Y.shape[1] == 196:
+            if self.cfg.arch == "dinov2":
+                # FIXME: replace magic numbers with imgsize/patch_size
+                img = F.interpolate(img, size=(16, 16), mode='bilinear', align_corners=False).permute(0,2,3,1)
+            elif Y.shape[1] == 196:
                 img = F.interpolate(img, size=(14, 14), mode='bilinear', align_corners=False).permute(0,2,3,1)
             else:
                 img = F.interpolate(img, size=(28, 28), mode='bilinear', align_corners=False).permute(0,2,3,1)

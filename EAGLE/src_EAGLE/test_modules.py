@@ -7,13 +7,13 @@ from io import BytesIO
 from EAGLE.src_EAGLE.modules import DinoFeaturizer, DinoV2Featurizer
 from EAGLE.src_EAGLE.utils import visualize_attention
 
-#v1_configpath = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/train_config_cityscapes.yml"
+v1_configpath = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/train_config_cityscapes.yml"
 v2_configpath = "/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/train_cityscapes_dinov2.yml"
 
-#v1_cfg = OmegaConf.load(v1_configpath)
+v1_cfg = OmegaConf.load(v1_configpath)
 v2_cfg = OmegaConf.load(v2_configpath)
 
-#featurizerv1 = DinoFeaturizer(dim=v1_cfg.dim, cfg=v1_cfg)
+featurizerv1 = DinoFeaturizer(dim=v1_cfg.dim, cfg=v1_cfg)
 featurizerv2 = DinoV2Featurizer(dim=v2_cfg.dim, cfg=v2_cfg)
 
 featurizerv1.cuda()
@@ -32,8 +32,27 @@ with torch.no_grad():
 assert featv1.shape[1] == featv2.shape[1]
 assert codev1.shape[1] == codev2.shape[1]
 
+
 # # guarantee that patch dimensions add up
 assert featv1.shape[-1] * featurizerv1.patch_size == featv2.shape[-1] * featurizerv2.patch_size
+
+# we need to adress the training loop to deal with the new feature shapes
+featsv1, feats_kkv1, codev1, code_kkv1 = featurizerv1(img)
+# feats_pos, feats_pos_kk, code_pos, code_pos_kk = self.net(img_pos) # same shape
+featsv2, feats_kkv2, codev2, code_kkv2 = featurizerv2(img)
+
+feats_pos_rev1 = feats_kkv1.reshape(featsv1.shape[0], featsv1.shape[1], -1).permute(0,2,1)
+feats_pos_rev2 = feats_kkv2.reshape(featsv2.shape[0], featsv2.shape[1], -1).permute(0,2,1)
+
+# We need to initialize EigenLoss with the reduced number of channels in mind
+# we get 224/patch_size * 224/patch_size = 16*16 = 256
+# instead of 224/8 * 224/8 = 28*28 = 784
+
+
+
+
+
+
 
 # passing in an actual image and visualizing how the feature maps look to verify that everything is correct now
 # featurizerv1.model

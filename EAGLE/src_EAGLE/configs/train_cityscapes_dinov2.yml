@@ -1,7 +1,7 @@
 output_root: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE'
 pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data' 
 save_pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data'
-
+# doublecheck params
 experiment_name: "cityscapes_EAGLE_dinov2"
 log_dir: "cityscapes"
 dataset_name: "cityscapes"
@@ -14,7 +14,7 @@ entity: ""
 
 # Loader params
 num_workers: 24
-max_steps: 5000
+max_steps: 25000
 batch_size: 32
 step_schedulers: 380
 dir_dataset_name: ~

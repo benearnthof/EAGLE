@@ -82,9 +82,11 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             dim = cfg.dim   
 
         data_dir = join(cfg.output_root, "data")
-
+        # TODO: Add dinov2
         if cfg.arch == "dino":
             self.net = DinoFeaturizer(dim, cfg)
+        elif cfg.arch == "dinov2":
+            self.net = DinoV2Featurizer(dim, cfg)
         else:
             raise ValueError("Unknown arch {}".format(cfg.arch))
         
@@ -161,6 +163,7 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
 
         feats, feats_kk, code, code_kk = self.net(img)
         feats_pos, feats_pos_kk, code_pos, code_pos_kk = self.net(img_pos)
+        # works
         feats_pos_aug, feats_pos_aug_kk, code_pos_aug, code_pos_aug_kk = self.net(img_pos_aug)
         log_args = dict(sync_dist=False, rank_zero_only=True)
         
@@ -214,7 +217,8 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             # 2. Eigenloss
             # pos 
             feats_pos_re = feats_pos_kk.reshape(feats_pos.shape[0], feats_pos.shape[1], -1).permute(0,2,1)
-            code_pos_re = code_pos_kk.reshape(code_pos.shape[0], code_pos.shape[1], -1).permute(0,2,1)        
+            code_pos_re = code_pos_kk.reshape(code_pos.shape[0], code_pos.shape[1], -1).permute(0,2,1) 
+            # adjust for new dimensions
             eigenvectors =  self.eigen_loss_fn(img, feats_pos_re, code_pos_re, corr_feats_pos, None, neg_sample=5)
 
             eigenvectors = eigenvectors[:, :, 1:].reshape(eigenvectors.shape[0], feats_pos.shape[-1], feats_pos.shape[-1], -1).permute(0,3,1,2)
@@ -444,7 +448,7 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             return net_optim, linear_probe_optim, cluster_probe_optim, cluster_eigen_optim, cluster_eigen_optim_aug
 
 
-@hydra.main(config_path="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/", config_name="train_config_cityscapes.yml")
+@hydra.main(config_path="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/", config_name="train_cityscapes_dinov2.yml")
 def my_app(cfg: DictConfig) -> None:
     wandb_config = dict(cfg)
     wandb.login(key=WANDB_API_KEY)
