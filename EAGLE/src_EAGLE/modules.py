@@ -46,6 +46,7 @@ class DinoV2Featurizer(nn.Module):
             self.model = vits_v2.__dict__[arch](
                 patch_size = self.patch_size,
                 img_size = 518,
+                init_values=1.0, # need init values so layer scale gets initialized correctly
                 num_register_tokens=4,
                 block_chunks=0,
             )
@@ -53,6 +54,7 @@ class DinoV2Featurizer(nn.Module):
             self.model = vits_v2.__dict__[arch](
                 patch_size = self.patch_size,
                 img_size = 518,
+                init_values=1.0,
                 num_register_tokens=4,
                 block_chunks=0,
                 ffn_layer= "swiglufused"
@@ -60,6 +62,11 @@ class DinoV2Featurizer(nn.Module):
         
         for p in self.model.parameters():
             p.requires_grad = False
+        print("Loading Pretrained DINOv2 weights")
+        # get first letter of arch
+        link = f"dinov2_vit{arch.split('_')[1][0]}14/dinov2_vit{arch.split('_')[1][0]}14_reg4_pretrain.pth"
+        state_dict = torch.hub.load_state_dict_from_url(url="https://dl.fbaipublicfiles.com/dinov2/" + link)
+        self.model.load_state_dict(state_dict)
         self.model.eval().cuda()
         self.dropout = torch.nn.Dropout2d(p=.1)
         # set up the cluster layers accordign to inner representation size of DINOv2

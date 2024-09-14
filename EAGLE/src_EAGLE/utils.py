@@ -1,22 +1,26 @@
-import collections
 import os
-from os.path import join
 import io
+import collections
+import requests
+from os.path import join
+from io import BytesIO
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 import numpy as np
+import torch
 import torch.multiprocessing
 import torch.nn as nn
 import torch.nn.functional as F
 import wget
 from PIL import Image
 from scipy.optimize import linear_sum_assignment
-#from torch._six import string_classes
+
 string_classes = str
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import np_str_obj_array_pattern, default_collate_err_msg_format
 from torchmetrics import Metric
-from torchvision import models
+from torchvision import models, transforms
 from torchvision import transforms as T
 from torch.utils.tensorboard.summary import hparams
 from pytorch_lightning.loggers import WandbLogger
@@ -338,3 +342,93 @@ def flexible_collate(batch):
         return [flexible_collate(samples) for samples in transposed]
 
     raise TypeError(default_collate_err_msg_format.format(elem_type))
+
+
+class ResizeAndPad:
+    "Helper for Model Introspection"
+    def __init__(self, target_size, multiple):
+        self.target_size = target_size
+        self.multiple = multiple
+    def __call__(self, img):
+        # Resize the image
+        img = transforms.Resize(self.target_size)(img)
+        # Calculate padding
+        pad_width = (self.multiple - img.width % self.multiple) % self.multiple
+        pad_height = (self.multiple - img.height % self.multiple) % self.multiple
+        # Apply padding
+        img = transforms.Pad((pad_width // 2, pad_height // 2, pad_width - pad_width // 2, pad_height - pad_height // 2))(img)
+        return img
+
+def visualize_attention(image, model, output_dir="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/"):
+    """
+    Overlays the last attention map onto a target image to help visualize if the model loaded correctly.
+    """
+    image_dimension = 448
+    target_size = (image_dimension, image_dimension)
+    data_transforms = transforms.Compose([
+        ResizeAndPad(target_size, 14),
+        transforms.CenterCrop(image_dimension),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model.eval()
+    model.to(device)
+
+    patch_size = model.patch_size
+    (original_w, original_h) = image.size
+    img = data_transforms(image)
+    # make the image divisible by the patch size
+    w, h = img.shape[1] - img.shape[1] % patch_size, img.shape[2] - img.shape[2] % patch_size
+    img = img[:, :w, :h]
+
+    w_featmap = img.shape[-2] // patch_size
+    h_featmap = img.shape[-1] // patch_size
+
+    img = img.unsqueeze(0)
+    img = img.to(device)
+
+    attention = model.get_last_self_attention(img)
+    number_of_heads = attention.shape[1]
+    attention = attention[0, :, 0, 1 + model.num_register_tokens:].reshape(number_of_heads, -1)
+    # resolution of attention from transformer tokens
+    attention = attention.reshape(number_of_heads, w_featmap, h_featmap)
+    # resize to original image resolution
+    attention = nn.functional.interpolate(attention.unsqueeze(0), scale_factor=patch_size, mode = "nearest")[0].cpu()
+    # sum all attention across 12 different heads to get one map of attention across entire image
+    attention = torch.sum(attention, dim=0)
+    # interpolate attention map back into original image dimensions
+    attention_of_image = nn.functional.interpolate(attention.unsqueeze(0).unsqueeze(0), size=(original_h, original_w), mode='bilinear', align_corners=False)
+    attention_of_image = attention_of_image.squeeze()
+
+    # Normalize image_metric to the range [0, 1]
+    image_metric = attention_of_image.numpy()
+    normalized_metric = Normalize(vmin=image_metric.min(), vmax=image_metric.max())(image_metric)
+    # Apply the Reds colormap
+    reds = plt.cm.Reds(normalized_metric)
+    # Create the alpha channel
+    alpha_max_value, gamma = 1.00, 0.5
+    # Apply gamma transformation to enhance lower values
+    enhanced_metric = np.power(normalized_metric, gamma)
+    # Create the alpha channel with enhanced visibility for lower values
+    alpha_channel = enhanced_metric * alpha_max_value
+    # Add the alpha channel to the RGB data
+    rgba_mask = np.zeros((image_metric.shape[0], image_metric.shape[1], 4))
+    rgba_mask[..., :3] = reds[..., :3]  # RGB
+    rgba_mask[..., 3] = alpha_channel  # Alpha
+    # Convert the numpy array to PIL Image
+    rgba_image = Image.fromarray((rgba_mask * 255).astype(np.uint8))
+    # Save the image
+    rgba_image.save(f"{output_dir}attn_map.png")
+    # Load the attention mask with PIL
+    attention_mask_image = Image.open(f"{output_dir}attn_map.png")
+    # Ensure both images are in the same mode
+    if image.mode != 'RGBA':
+        image = image.convert('RGBA')
+    # Overlay the second image onto the first image
+    # The second image must be the same size as the first image
+    image.paste(attention_mask_image, (0, 0), attention_mask_image)
+    # Save combined image
+    image.save(f"{output_dir}image_with_attn_map.png")
+    print("Saved Attention Mask and Image successfully.")
