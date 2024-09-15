@@ -512,8 +512,8 @@ def my_app(cfg: DictConfig) -> None:
         dataset_name=cfg.dataset_name,
         crop_type=None,
         image_set="val",
-        transform=get_transform(320, False, val_loader_crop),
-        target_transform=get_transform(320, True, val_loader_crop),
+        transform=get_transform(cfg.valres, False, val_loader_crop),
+        target_transform=get_transform(cfg.valres, True, val_loader_crop),
         mask=True,
         cfg=cfg,
     )
