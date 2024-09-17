@@ -1,12 +1,13 @@
-from modules import *
+from EAGLE.src_EAGLE.modules import *
 import os
-from data import ContrastiveSegDataset
+from pusegnet.sngp.data_loader import ContrastiveSegDataset
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning.utilities.seed import seed_everything
+# from pytorch_lightning.utilities.seed import seed_everything
+import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from torchvision.transforms.functional import five_crop, _get_image_size, crop
+from torchvision.transforms.functional import five_crop, get_image_size, crop
 from tqdm import tqdm
 from torch.utils.data import Dataset
 
@@ -38,7 +39,7 @@ def _random_crops(img, size, seed, n):
     if len(size) != 2:
         raise ValueError("Please provide only two dimensions (h, w) for size.")
 
-    image_width, image_height = _get_image_size(img)
+    image_width, image_height = get_image_size(img)
     crop_height, crop_width = size
     if crop_width > image_width or crop_height > image_height:
         msg = "Requested crop size {} is bigger than input size {}"
@@ -127,10 +128,10 @@ class RandomCropComputer(Dataset):
         return len(self.dataset)
 
 
-@hydra.main(config_path="configs", config_name="train_config.yml")
+@hydra.main(config_path="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/gitroot/EAGLE/EAGLE/src_EAGLE/configs/", config_name="train_cityscapes_dinov2.yml")
 def my_app(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
-    seed_everything(seed=0, workers=True)
+    pl.seed_everything(seed=0, workers=True)
 
     # dataset_names = ["cityscapes", "cocostuff27"]
     # img_sets = ["train", "val"]

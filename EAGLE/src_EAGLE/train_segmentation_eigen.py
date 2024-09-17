@@ -161,6 +161,9 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             label_pos = batch["label_pos"]
             img_pos_aug = batch["img_pos_aug"]
 
+        # print("IMG:", img.shape)
+        # print("POS:", img_pos.shape)
+        # print("AUG:", img_pos_aug.shape)
         feats, feats_kk, code, code_kk = self.net(img)
         feats_pos, feats_pos_kk, code_pos, code_pos_kk = self.net(img_pos)
         # works
@@ -250,6 +253,7 @@ class LitUnsupervisedSegmenter(pl.LightningModule):
             
             loss += (cluster_eigen_aug_loss + cluster_eigen_loss)/2
 
+            # do we need to adjust hyperparameters?
             loss += (self.cfg.pos_inter_weight * pos_inter_loss +
                      self.cfg.neg_inter_weight * neg_inter_loss 
                      ) * self.cfg.correspondence_weight * (1.0 - update_params)

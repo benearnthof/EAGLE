@@ -359,11 +359,21 @@ class ResizeAndPad:
         img = transforms.Pad((pad_width // 2, pad_height // 2, pad_width - pad_width // 2, pad_height - pad_height // 2))(img)
         return img
 
-def visualize_attention(image, model, output_dir="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/", alpha_max_value=1.0, gamma=0.75):
+def visualize_attention(
+    image,
+    model, 
+    output_dir="/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/",
+    alpha_max_value=1.0, 
+    gamma=0.75,
+    arch="dinov2"
+    ):
     """
     Overlays the last attention map onto a target image to help visualize if the model loaded correctly.
     """
-    patch_size = model.patch_size
+    if arch == "dinov2":
+        patch_size = model.patch_size
+    else:
+        patch_size = 8
     target_size = (
         min(image.size) - min(image.size) % patch_size, 
         min(image.size) - min(image.size) % patch_size
@@ -394,45 +404,50 @@ def visualize_attention(image, model, output_dir="/dss/dssmcmlfs01/pr74ze/pr74ze
     img = img.to(device)
     model.eval()
     with torch.no_grad():
-        attention = model.get_last_self_attention(img)
-        number_of_heads = attention.shape[1]
-        attention = attention[0, :, 0, 1 + model.num_register_tokens:].reshape(number_of_heads, -1)
-        # resolution of attention from transformer tokens
-        attention = attention.reshape(number_of_heads, w_featmap, h_featmap)
-        # resize to original image resolution
-        attention = nn.functional.interpolate(attention.unsqueeze(0), scale_factor=patch_size, mode = "nearest")[0].cpu()
-        # sum all attention across 12 different heads to get one map of attention across entire image
-        attention = torch.sum(attention, dim=0)
-        # interpolate attention map back into original image dimensions
-        attention_of_image = nn.functional.interpolate(attention.unsqueeze(0).unsqueeze(0), size=(original_h, original_w), mode='bilinear', align_corners=False)
-        attention_of_image = attention_of_image.squeeze()
+        _, attns, _ = model.get_intermediate_feat(img)
+        # get_intermediate_features returns returns in order from first block to last
+        for i, attention in enumerate(attns):
+            number_of_heads = attention.shape[1]
+            if arch == "dinov2":
+                attention = attention[0, :, 0, 1 + model.num_register_tokens:].reshape(number_of_heads, -1)
+            elif arch == "dinov1":
+                attention = attention[0, :, 0, 1:].reshape(number_of_heads, -1)
+            # resolution of attention from transformer tokens
+            attention = attention.reshape(number_of_heads, w_featmap, h_featmap)
+            # resize to original image resolution
+            attention = nn.functional.interpolate(attention.unsqueeze(0), scale_factor=patch_size, mode = "nearest")[0].cpu()
+            # sum all attention across 12 different heads to get one map of attention across entire image
+            attention = torch.sum(attention, dim=0)
+            # interpolate attention map back into original image dimensions
+            attention_of_image = nn.functional.interpolate(attention.unsqueeze(0).unsqueeze(0), size=(original_h, original_w), mode='bilinear', align_corners=False)
+            attention_of_image = attention_of_image.squeeze()
 
-        # Normalize image_metric to the range [0, 1]
-        image_metric = attention_of_image.numpy()
-        normalized_metric = Normalize(vmin=image_metric.min(), vmax=image_metric.max())(image_metric)
-        # Apply the Reds colormap
-        reds = plt.cm.Reds(normalized_metric)
-        # Create the alpha channel
-        # Apply gamma transformation to enhance lower values
-        enhanced_metric = np.power(normalized_metric, gamma)
-        # Create the alpha channel with enhanced visibility for lower values
-        alpha_channel = enhanced_metric * alpha_max_value
-        # Add the alpha channel to the RGB data
-        rgba_mask = np.zeros((image_metric.shape[0], image_metric.shape[1], 4))
-        rgba_mask[..., :3] = reds[..., :3]  # RGB
-        rgba_mask[..., 3] = alpha_channel  # Alpha
-        # Convert the numpy array to PIL Image
-        rgba_image = Image.fromarray((rgba_mask * 255).astype(np.uint8))
-        # Save the image
-        rgba_image.save(f"{output_dir}attn_map.png")
-        # Load the attention mask with PIL
-        attention_mask_image = Image.open(f"{output_dir}attn_map.png")
-        # Ensure both images are in the same mode
-        if image.mode != 'RGBA':
-            image = image.convert('RGBA')
-        # Overlay the second image onto the first image
-        # The second image must be the same size as the first image
-        image.paste(attention_mask_image, (0, 0), attention_mask_image)
-        # Save combined image
-        image.save(f"{output_dir}image_with_attn_map.png")
-        print("Saved Attention Mask and Image successfully.")
+            # Normalize image_metric to the range [0, 1]
+            image_metric = attention_of_image.numpy()
+            normalized_metric = Normalize(vmin=image_metric.min(), vmax=image_metric.max())(image_metric)
+            # Apply the Reds colormap
+            reds = plt.cm.Reds(normalized_metric)
+            # Create the alpha channel
+            # Apply gamma transformation to enhance lower values
+            enhanced_metric = np.power(normalized_metric, gamma)
+            # Create the alpha channel with enhanced visibility for lower values
+            alpha_channel = enhanced_metric * alpha_max_value
+            # Add the alpha channel to the RGB data
+            rgba_mask = np.zeros((image_metric.shape[0], image_metric.shape[1], 4))
+            rgba_mask[..., :3] = reds[..., :3]  # RGB
+            rgba_mask[..., 3] = alpha_channel  # Alpha
+            # Convert the numpy array to PIL Image
+            rgba_image = Image.fromarray((rgba_mask * 255).astype(np.uint8))
+            # Save the image
+            rgba_image.save(f"{output_dir}attn_map{i}.png")
+            # Load the attention mask with PIL
+            attention_mask_image = Image.open(f"{output_dir}attn_map{i}.png")
+            # Ensure both images are in the same mode
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+            # Overlay the second image onto the first image
+            # The second image must be the same size as the first image
+            image.paste(attention_mask_image, (0, 0), attention_mask_image)
+            # Save combined image
+            image.save(f"{output_dir}image_with_attn_map{i}.png")
+            print("Saved Attention Mask and Image successfully.")

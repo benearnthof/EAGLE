@@ -2,7 +2,7 @@ output_root: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/checkpoints/EAGLE
 pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data' 
 save_pytorch_data_dir: '/dss/dssmcmlfs01/pr74ze/pr74ze-dss-0001/ru25jan4/data'
 # doublecheck params
-experiment_name: "cityscapes_EAGLE_dinov2"
+experiment_name: "city_EAGLE_v2_392"
 log_dir: "cityscapes"
 dataset_name: "cityscapes"
 azureml_logging: False
@@ -15,7 +15,7 @@ entity: ""
 # Loader params
 num_workers: 24
 max_steps: 25000
-batch_size: 32
+batch_size: 16
 step_schedulers: 380
 dir_dataset_name: ~
 dir_dataset_n_classes: 5
@@ -23,8 +23,8 @@ dir_dataset_n_classes: 5
 has_labels: False
 crop_type: 'five'
 crop_ratio: .5
-res: 224
-valres: 336
+res: 392                        # going to 392 to obtain 28x28 patch maps
+valres: 392
 loader_crop_type: "center"
 
 # lr
@@ -63,7 +63,7 @@ shift_bias: 0.11
 
 # Feature Contrastive params
 pointwise: True
-feature_samples: 28
+feature_samples: 28          # This should be <= 16 for Dinov2
 neg_samples: 5
 aug_alignment_weight: 0.0
 
@@ -98,6 +98,8 @@ w2: 3.0
 shift: 0.00
 crf_samples: 1000
 color_space: "rgb"
+
+num_neighbors: 7
 
 reset_probe_steps: ~
 

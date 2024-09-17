@@ -66,6 +66,7 @@ class DinoV2Featurizer(nn.Module):
         # get first letter of arch
         link = f"dinov2_vit{arch.split('_')[1][0]}14/dinov2_vit{arch.split('_')[1][0]}14_reg4_pretrain.pth"
         state_dict = torch.hub.load_state_dict_from_url(url="https://dl.fbaipublicfiles.com/dinov2/" + link)
+        assert state_dict is not None
         self.model.load_state_dict(state_dict)
         self.model.eval().cuda()
         self.dropout = torch.nn.Dropout2d(p=.1)
@@ -109,10 +110,10 @@ class DinoV2Featurizer(nn.Module):
             image_features, image_features_kk = [], []
             for index in range(k):
                 # we're interested in the k last feature maps so we loop over the reversed lists
-                feat, attn, qkv = feat_all[::-1][index], attn_all[::-1][index], qkv_all[::-1][index]
+                feat, attn, qkv = feat_all[index], attn_all[index], qkv_all[index]
                 # discard first 5 channels each to fit required dimensions for conv2d
-                img_feat = feat[:, 5:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
-                img_k = qkv[1, :, :, 5:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
+                img_feat = feat[:, 1+self.model.num_register_tokens:, :].reshape(feat.shape[0], feat_h, feat_w, -1).permute(0, 3, 1, 2)
+                img_k = qkv[1, :, :, 1+self.model.num_register_tokens:, :].reshape(feat.shape[0], attn.shape[1], feat_h, feat_w, -1)
                 B, H, I, J, D = img_k.shape
                 img_kk = img_k.permute(0, 1, 4, 2, 3).reshape(B, H * D, I, J)
                 # Will yield features in order: high, mid, low
@@ -124,7 +125,7 @@ class DinoV2Featurizer(nn.Module):
                     
             # class feat is just high level features
             if return_class_feat:
-                return feat_all[-1][:, :1, :].reshape(feat_all[-1].shape[0], 1, 1, -1).permute(0, 3, 1, 2)
+                return feat_all[-1][:, :1+self.model.num_register_tokens, :].reshape(feat_all[-1].shape[0], 1, 1, -1).permute(0, 3, 1, 2)
 
         if self.proj_type is not None:
             with torch.no_grad():
@@ -141,6 +142,7 @@ class DinoV2Featurizer(nn.Module):
             return self.dropout(image_feat), self.dropout(image_kk), code, code_kk
         else:
             return image_feat, image_kk, code, code_kk
+
 
 class DinoFeaturizer(nn.Module):
 
@@ -440,7 +442,11 @@ class CorrespondenceLoss(nn.Module):
 
         feats = sample(orig_feats, coords1)
         code = sample(orig_code, coords1)
-        
+        # print("OG_FEATS", orig_feats.shape)
+        # print("FEATS", feats.shape)
+        # print("OG_CODE", orig_code.shape)
+        # print("CODE", code.shape)
+
         feats_pos = sample(orig_feats_pos, coords2)
         code_pos = sample(orig_code_pos, coords2)
         

@@ -270,7 +270,7 @@ class EigenLoss(nn.Module):
         if code_neg_torch is None:
             if self.cfg.arch == "dinov2":
                 # FIXME: replace magic numbers with imgsize/patch_size
-                img = F.interpolate(img, size=(16, 16), mode='bilinear', align_corners=False).permute(0,2,3,1)
+                img = F.interpolate(img, size=(28, 28), mode='bilinear', align_corners=False).permute(0,2,3,1)
             elif Y.shape[1] == 196:
                 img = F.interpolate(img, size=(14, 14), mode='bilinear', align_corners=False).permute(0,2,3,1)
             else:
