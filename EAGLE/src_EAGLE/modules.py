@@ -108,7 +108,7 @@ class DinoV2Featurizer(nn.Module):
         with torch.no_grad():
             feat_all, attn_all, qkv_all = self.model.get_intermediate_feat(img, n=1)
             image_features, image_features_kk = [], []
-            for index in range(k):
+            for index in range(k): # TOOD: switch for kqv vs feat => last vs first
                 # we're interested in the k last feature maps so we loop over the reversed lists
                 feat, attn, qkv = feat_all[index], attn_all[index], qkv_all[index]
                 # discard first 5 channels each to fit required dimensions for conv2d
